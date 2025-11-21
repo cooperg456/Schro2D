@@ -37,10 +37,6 @@ portabilityEnabled_(config.portability), validationEnabled_(config.validation) {
 	createComputePipeline();
 }
 
-
-
-	std::vector<vk::DescriptorSet> descriptorSets_{};	//	descriptor sets
-
 Schro2D::~Schro2D() {
 	device_.waitIdle();
 

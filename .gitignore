@@ -43,3 +43,6 @@
 # CMake output folders
 bin/
 build/
+
+# etc
+.vscode/
