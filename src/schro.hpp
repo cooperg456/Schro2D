@@ -25,13 +25,20 @@ struct Schro2DConfig {
 	bool portability;	//	toggle for including "VK_KHR_portability_subset" extension and flags
 };
 
-//	struct to hold per frame data [unused]
-struct FrameObjects {
+//	struct to hold per frame data
+struct FrameData {
 	vk::Fence fence;				//	fence
 	vk::Semaphore imageSem;			//	image semaphore
 	vk::Semaphore renderSem;		//	render semaphore
 	vk::CommandBuffer cmdBuffer;	//	command buffer
 	vk::CommandPool cmdPool;		//	command pool
+};
+
+//	struct to hold image data
+struct ImageData {
+	vk::Image image;				//	image
+	vk::ImageView view;				//	image view
+	bool isSwapchainImage = false;	//	is swapchain image
 };
 
 //	schrodinger equation solver using vulkan
@@ -82,22 +89,16 @@ private:
 	
 	vk::Instance instance_{};				//	instance
 	vk::PhysicalDevice physicalDevice_{};	//	physical device
-	uint32_t queueFamily_ = 0xFFFFFFFF;		//	queue family
+	uint32_t queueFamily_ = UINT32_MAX;		//	queue family
 	vk::Device device_{};					//	device
 	vk::Queue queue_{};						//	queue
 	VmaAllocator allocator_{};				//	allocator
 
-	GLFWwindow* window_ {};			//	window
-	VkSurfaceKHR surface_{};		//	surface
-	vk::SwapchainKHR swapchain_{};	//	swap chain
-
-	std::vector<vk::Fence> fences_{};					//	fence
-	std::vector<vk::Semaphore> imageSemaphores_{};		//	image semaphore
-	std::vector<vk::Semaphore> renderSemaphores_{};		//	render semaphore
-	std::vector<vk::Image> images_{};					//	swap chain images
-	std::vector<vk::ImageView> imageViews_{};			//	swap chain image views
-	std::vector<vk::CommandBuffer> commandBuffers_{};	//	command buffers
-	std::vector<vk::CommandPool> commandPools_{};		//	command pools
+	GLFWwindow* window_ {};					//	window
+	VkSurfaceKHR surface_{};				//	surface
+	vk::SwapchainKHR swapchain_{};			//	swapchain
+	std::vector<FrameData> frameData_{};	//	per frame data structures
+	std::vector<ImageData> imageData_{};	//	image data structures
 
 	vk::ShaderModule shaderModule_{};					//	shader module
 	vk::DescriptorSetLayout descriptorSetLayout_{};		//	descriptor set layout

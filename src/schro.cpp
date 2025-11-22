@@ -55,21 +55,21 @@ Schro2D::~Schro2D() {
 	if (shaderModule_) {
 		device_.destroyShaderModule(shaderModule_);
 	}
-	for (auto commandPool : commandPools_) {
-        device_.destroyCommandPool(commandPool);
-    }
-	for (auto semaphore : renderSemaphores_) {
-        device_.destroySemaphore(semaphore);
-    }
-	for (auto semaphore : imageSemaphores_) {
-        device_.destroySemaphore(semaphore);
-    }
-	for (auto fence : fences_) {
-        device_.destroyFence(fence);
-    }
-	for (auto imageView : imageViews_) {
-        device_.destroyImageView(imageView);
-    }
+	for (auto image : imageData_) {
+		if (image.isSwapchainImage) {
+			device_.destroyImageView(image.view);
+		}
+		else {
+			//	...
+		}
+	}
+	for (auto frame : frameData_) {
+		device_.freeCommandBuffers(frame.cmdPool, frame.cmdBuffer);
+		device_.destroyCommandPool(frame.cmdPool);
+		device_.destroySemaphore(frame.renderSem);
+		device_.destroySemaphore(frame.imageSem);
+		device_.destroyFence(frame.fence);
+	}
 	if (swapchain_) {
 		device_.destroySwapchainKHR(swapchain_);
 	}
@@ -117,6 +117,7 @@ void Schro2D::createInstance() {
 	uint32_t glfwExtensionsCount = 0;
 	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
+	extensions.emplace_back(vk::EXTSwapchainColorSpaceExtensionName);
 	
 	//	portability extensions and flags
 	if (portabilityEnabled_) {
@@ -219,34 +220,36 @@ void Schro2D::createAllocator() {
 }
 
 void Schro2D::createSwapChain() {
-
 	vk::SurfaceCapabilitiesKHR swapChainCapabilities = physicalDevice_.getSurfaceCapabilitiesKHR(surface_);
-	std::vector<vk::SurfaceFormatKHR> surfaceFormats = physicalDevice_.getSurfaceFormatsKHR(surface_);
-	std::vector<vk::PresentModeKHR> presentModes = physicalDevice_.getSurfacePresentModesKHR(surface_);
 
+	std::vector<vk::SurfaceFormatKHR> surfaceFormats = physicalDevice_.getSurfaceFormatsKHR(surface_);
 	vk::SurfaceFormatKHR surfaceFormat;
 	for (size_t i = 0; i < surfaceFormats.size(); i++) {
-		if (surfaceFormats[i].format == vk::Format::eB8G8R8A8Srgb 
+		//	standard format, colorspace
+		if (surfaceFormats[i].format == vk::Format::eR8G8B8A8Srgb 
 			&& surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
 			surfaceFormat = surfaceFormats[i];
+		}
+		//	hdr (if supported)
+		if (surfaceFormats[i].format == vk::Format::eR16G16B16A16Sfloat 
+			&& surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eHdr10HlgEXT) {
+			surfaceFormat = surfaceFormats[i];
+			break;
 		}
 	}
 
 	vk::PresentModeKHR presentMode = vk::PresentModeKHR::eFifo;
-	VkExtent2D extent2D = { 
-		static_cast<uint32_t>(viewportWidth_ * simScale_), 
-		static_cast<uint32_t>(viewportHeight_ * simScale_)
-	};
+
+	VkExtent2D extent2D = { static_cast<uint32_t>(viewportWidth_ * simScale_), static_cast<uint32_t>(viewportHeight_ * simScale_) };
 
 	vk::ImageUsageFlags imageUsageFlags = vk::ImageUsageFlagBits::eColorAttachment 
-		| vk::ImageUsageFlagBits::eTransferSrc 
-		| vk::ImageUsageFlagBits::eTransferDst 
-		| vk::ImageUsageFlagBits::eStorage;	
+		| vk::ImageUsageFlagBits::eTransferDst
+		| vk::ImageUsageFlagBits::eStorage;
 
 	vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
 		vk::SwapchainCreateFlagsKHR(),
 		surface_,
-		2,
+		swapChainCapabilities.minImageCount,
 		surfaceFormat.format,
 		surfaceFormat.colorSpace,
 		extent2D,
@@ -263,61 +266,47 @@ void Schro2D::createSwapChain() {
 	};
 
 	swapchain_ = device_.createSwapchainKHR(swapChainCreateInfo);
-	images_ = device_.getSwapchainImagesKHR(swapchain_);
+	auto images = device_.getSwapchainImagesKHR(swapchain_);
+	frameData_.resize(images.size());
+	imageData_.resize(images.size());
 
-	imageViews_.resize(images_.size());
-	fences_.resize(images_.size());
-	imageSemaphores_.resize(images_.size());
-	renderSemaphores_.resize(images_.size());
-	commandPools_.resize(images_.size());
-	commandBuffers_.resize(images_.size());
+	vk::FenceCreateInfo fenceCreateInfo = { vk::FenceCreateFlagBits::eSignaled };
 
-	vk::FenceCreateInfo fenceCreateInfo = {
-		vk::FenceCreateFlagBits::eSignaled
-	};
+	vk::CommandPoolCreateInfo commandPoolCreateInfo = { vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueFamily_ };
 
-	vk::CommandPoolCreateInfo commandPoolCreateInfo = {
-		vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-		queueFamily_
-	};
+	for (size_t i = 0; i < images.size(); i++) {
+		//	image structures
+		imageData_[i].image = images[i];
+		imageData_[i].isSwapchainImage = true;
 
-	for (size_t i = 0; i < images_.size(); i++) {
 		vk::ImageViewCreateInfo imageViewCreateInfo = {
 			vk::ImageViewCreateFlags(),
-			images_[i],
+			images[i],
 			vk::ImageViewType::e2D,
 			surfaceFormat.format,
 			{
-				vk::ComponentSwizzle::eIdentity,
-				vk::ComponentSwizzle::eIdentity,
-				vk::ComponentSwizzle::eIdentity,
-				vk::ComponentSwizzle::eIdentity
+				vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity,
+				vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity
 			},
-			{
-				vk::ImageAspectFlagBits::eColor,
-				0,
-				1,
-				0,
-				1
-			}
+			{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
 		};
+		imageData_[i].view = device_.createImageView(imageViewCreateInfo);
 
-		imageViews_[i] = device_.createImageView(imageViewCreateInfo);
+		//	sync structures
+		frameData_[i].fence = device_.createFence(fenceCreateInfo);
+		frameData_[i].imageSem = device_.createSemaphore(vk::SemaphoreCreateInfo());
+		frameData_[i].renderSem = device_.createSemaphore(vk::SemaphoreCreateInfo());
 
-		fences_[i] = device_.createFence(fenceCreateInfo);
-
-		imageSemaphores_[i] = device_.createSemaphore(vk::SemaphoreCreateInfo());
-		renderSemaphores_[i] = device_.createSemaphore(vk::SemaphoreCreateInfo());
-
-		commandPools_[i] = device_.createCommandPool(commandPoolCreateInfo);
+		//	cmd structures
+		frameData_[i].cmdPool = device_.createCommandPool(commandPoolCreateInfo);
 
 		vk::CommandBufferAllocateInfo commandBufferAllocateInfo = {
-			commandPools_[i],
+			frameData_[i].cmdPool,
 			vk::CommandBufferLevel::ePrimary,
 			1
 		};
 
-		commandBuffers_[i] = device_.allocateCommandBuffers(commandBufferAllocateInfo).front();
+		frameData_[i].cmdBuffer = device_.allocateCommandBuffers(commandBufferAllocateInfo).front();
 	}
 }
 
@@ -344,17 +333,11 @@ void Schro2D::createComputePipeline() {
 
 	// boring vulkan boilerplate
 	std::vector<vk::DescriptorSetLayoutBinding> descriptorSetLayoutBindings;
-	descriptorSetLayoutBindings.emplace_back(
-		0, 
-		vk::DescriptorType::eStorageImage, 
-		1, 
-		vk::ShaderStageFlagBits::eCompute
-	);
+	descriptorSetLayoutBindings.emplace_back(0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute);
 
 	vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
 		vk::DescriptorSetLayoutCreateFlags(),
-		1,
-		descriptorSetLayoutBindings.data()
+		(uint32_t)descriptorSetLayoutBindings.size(), descriptorSetLayoutBindings.data()
 	};
 
 	descriptorSetLayout_ = device_.createDescriptorSetLayout(descriptorSetLayoutCreateInfo);
@@ -383,18 +366,18 @@ void Schro2D::createComputePipeline() {
 
 	vk::DescriptorPoolSize descriptorPoolSize = {
 		vk::DescriptorType::eStorageImage,
-		(uint32_t)images_.size()
+		(uint32_t)frameData_.size()
 	};
 
 	vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo = {
 		vk::DescriptorPoolCreateFlags(),
-		(uint32_t)images_.size(),
+		(uint32_t)frameData_.size(), 
 		descriptorPoolSize
 	};
 
 	descriptorPool_ = device_.createDescriptorPool(descriptorPoolCreateInfo);
 
-	std::vector<vk::DescriptorSetLayout> layouts(images_.size(), descriptorSetLayout_);
+	std::vector<vk::DescriptorSetLayout> layouts(frameData_.size(), descriptorSetLayout_);
 
 	vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo = {
 		descriptorPool_,
@@ -404,18 +387,12 @@ void Schro2D::createComputePipeline() {
 
 	descriptorSets_ = device_.allocateDescriptorSets(descriptorSetAllocateInfo);
 
-	for (size_t i = 0; i < images_.size(); i++) {
-		vk::DescriptorImageInfo descriptorImageInfo = {
-			nullptr, 
-			imageViews_[i], 
-			vk::ImageLayout::eGeneral
-		};
+	for (size_t i = 0; i < frameData_.size(); i++) {
+		vk::DescriptorImageInfo descriptorImageInfo = { nullptr, imageData_[i].view, vk::ImageLayout::eGeneral };
 
-		vk::WriteDescriptorSet writeDescriptorSet = {
+		vk::WriteDescriptorSet writeDescriptorSet = { 
 			descriptorSets_[i],
-			0, 
-			0, 
-			1,
+			0, 0, 1,
 			vk::DescriptorType::eStorageImage,
 			&descriptorImageInfo
 		};
@@ -428,24 +405,28 @@ void Schro2D::createComputePipeline() {
 //	######################################################
 
 void Schro2D::draw(uint8_t frameIdx) {
-	device_.waitForFences(fences_[frameIdx], true, 0xFFFFFFFF);
-	device_.resetFences(fences_[frameIdx]);
+	vk::Result waitResult = device_.waitForFences(frameData_[frameIdx].fence, true, 0xFFFFFFFF);
+	if (waitResult != vk::Result::eSuccess) {
+		throw std::runtime_error(vk::to_string(waitResult));
+	}
+	device_.resetFences(frameData_[frameIdx].fence);
 
-	uint32_t swapchainIndex;
-	device_.acquireNextImageKHR(swapchain_, 0xFFFFFFFF, imageSemaphores_[frameIdx], nullptr, &swapchainIndex);
+	uint32_t imageIdx;
+	vk::Result acquireResult = device_.acquireNextImageKHR(swapchain_, 0xFFFFFFFF, frameData_[frameIdx].imageSem, nullptr, &imageIdx);
+	if (acquireResult != vk::Result::eSuccess) {
+		throw std::runtime_error(vk::to_string(acquireResult));
+	}
 
-	commandBuffers_[frameIdx].reset();
-	commandBuffers_[frameIdx].begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+	frameData_[frameIdx].cmdBuffer.reset();
+	frameData_[frameIdx].cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
 	//	##  CMD BEGIN
 	//	######################################################
 
 	vk::ImageSubresourceRange imageSubresourceRange = {
 		vk::ImageAspectFlagBits::eColor,
-		0, 
-		vk::RemainingMipLevels,
-		0,
-		vk::RemainingArrayLayers
+		0, vk::RemainingMipLevels,
+		0, vk::RemainingArrayLayers
 	};
 
     vk::ImageMemoryBarrier2 imageBarrier = {
@@ -457,33 +438,20 @@ void Schro2D::draw(uint8_t frameIdx) {
 		vk::ImageLayout::eGeneral,
 		queueFamily_,
 		queueFamily_,
-		images_[swapchainIndex],
+		imageData_[imageIdx].image,
 		imageSubresourceRange
 	};
 
-	vk::DependencyInfo dependencyInfo = {
-		vk::DependencyFlags(),
-		nullptr,
-		nullptr,
-		imageBarrier
-	};
+	vk::DependencyInfo dependencyInfo = { vk::DependencyFlags(), nullptr, nullptr, imageBarrier };
 
-    commandBuffers_[frameIdx].pipelineBarrier2(dependencyInfo);
+    frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo);
 
 	// vk::ClearColorValue clearValue = { 0.5f, 0.0f, 0.5f, 1.0f };
 	// commandBuffers_[frameIdx].clearColorImage(images_[swapchainIndex], vk::ImageLayout::eGeneral, clearValue, imageSubresourceRange);
 
-	commandBuffers_[frameIdx].bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline_);
-	commandBuffers_[frameIdx].bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout_, 0, descriptorSets_[swapchainIndex], nullptr);
-	commandBuffers_[frameIdx].dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
-
-	imageSubresourceRange = {
-		vk::ImageAspectFlagBits::eColor,
-		0, 
-		vk::RemainingMipLevels,
-		0,
-		vk::RemainingArrayLayers
-	};
+	frameData_[frameIdx].cmdBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline_);
+	frameData_[frameIdx].cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout_, 0, descriptorSets_[imageIdx], nullptr);
+	frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
 
     imageBarrier = {
 		vk::PipelineStageFlagBits2::eAllCommands,
@@ -494,59 +462,39 @@ void Schro2D::draw(uint8_t frameIdx) {
 		vk::ImageLayout::ePresentSrcKHR,
 		queueFamily_,
 		queueFamily_,
-		images_[frameIdx],
+		imageData_[imageIdx].image,
 		imageSubresourceRange
 	};
 
-	dependencyInfo = {
-		vk::DependencyFlags(),
-		nullptr,
-		nullptr,
-		imageBarrier
-	};
-
-    commandBuffers_[frameIdx].pipelineBarrier2(dependencyInfo);
+    frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo);
 
 	//	##  CMD END
 	//	######################################################
 	
-	commandBuffers_[frameIdx].end();
+	frameData_[frameIdx].cmdBuffer.end();
 
 	vk::SemaphoreSubmitInfo waitSemaphoreInfo = {
-		imageSemaphores_[frameIdx],
-		1,
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-		0
+		frameData_[frameIdx].imageSem, 1,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
 	};
 
 	vk::SemaphoreSubmitInfo submitSemaphoreInfo = {
-		renderSemaphores_[frameIdx],
-		1,
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-		0
+		frameData_[frameIdx].renderSem, 1,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
 	};
 
-	vk::CommandBufferSubmitInfo commandBufferSubmitInfo = {
-		commandBuffers_[frameIdx],
-		0
-	};
+	vk::CommandBufferSubmitInfo commandBufferSubmitInfo = { frameData_[frameIdx].cmdBuffer, 0 };
 
-	vk::SubmitInfo2 submitInfo = {
-		vk::SubmitFlagBits(),
-		waitSemaphoreInfo,
-		commandBufferSubmitInfo,
-		submitSemaphoreInfo
-	};
+	vk::SubmitInfo2 submitInfo = { vk::SubmitFlagBits(), waitSemaphoreInfo, commandBufferSubmitInfo, submitSemaphoreInfo };
 
-	queue_.submit2(submitInfo, fences_[frameIdx]);
+	queue_.submit2(submitInfo, frameData_[frameIdx].fence);
 
-	vk::PresentInfoKHR presentInfo = {
-		renderSemaphores_[frameIdx],
-		swapchain_,
-		swapchainIndex
-	};
+	vk::PresentInfoKHR presentInfo = { frameData_[frameIdx].renderSem, swapchain_, imageIdx };
 
-	queue_.presentKHR(presentInfo);
+	vk::Result presentResult = queue_.presentKHR(presentInfo);
+	if (presentResult != vk::Result::eSuccess) {
+		throw std::runtime_error(vk::to_string(presentResult));
+	}
 }
 
 //	##	run simulation loop
@@ -558,6 +506,6 @@ void Schro2D::run() {
 	while (!glfwWindowShouldClose(window_)) {
 		glfwPollEvents();
 		draw(frameIdx);
-		frameIdx ^= 1;
+		frameIdx = (frameIdx + 1) % ((uint8_t)frameData_.size());
 	}
 }
