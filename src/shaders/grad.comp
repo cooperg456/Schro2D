@@ -6,19 +6,31 @@ layout (local_size_x = 32, local_size_y = 32) in;
 
 layout (binding = 0) uniform writeonly image2D image;
 
+/*
+layout (std430, binding = 1) uniform buffer psiReadBuffer {
+	vec2 psi[];
+}
 
+layout (std430, binding = 2) buffer psiWriteBuffer {
+	vec2 psi2[];
+}
+
+layout (push_constants) uniform consts {
+	float dt;
+}
+*/
 
 void main() {
-    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(image);
 
-    if (coord.x < size.x && coord.y < size.y) {
-        vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+	if (coord.x < size.x && coord.y < size.y) {
+		vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
 
-        color.x = float(coord.x) / (size.x);
-        color.y = float(coord.y) / (size.y);
-        color.z = float(coord.x + coord.y) / (size.x + size.y);
-    
-        imageStore(image, coord, color);
-    }
+		color.x = float(coord.x) / (size.x);
+		color.y = float(coord.y) / (size.y);
+		color.z = float(coord.x + coord.y) / (size.x + size.y);
+	
+		imageStore(image, coord, color);
+	}
 }

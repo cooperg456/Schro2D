@@ -7,17 +7,18 @@
 
 
 
+
+
+
+
 int main(int argc, char* argv[]) {
-	Schro2DConfig cfg = { 
+	Schro2D schro = Schro2D(
 		static_cast<uint32_t>(std::stoi(argv[1])), 
 		static_cast<uint32_t>(std::stoi(argv[2])), 
-		2, 
-		true,
-		true 
-	};
-	
-	Schro2D sim = Schro2D(cfg);
-	sim.run();
+		static_cast<uint32_t>(std::stoi(argv[3]))
+	);
+
+	schro.run();
 
 	return 0;
 }

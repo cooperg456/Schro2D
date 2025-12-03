@@ -19,14 +19,41 @@
 //	header
 #include "schro.hpp"
 
+//	debug and compatability options
+#ifdef DEBUG
+	constexpr bool VALIDATION_ENABLED = true;	//	toggle for including "VK_LAYER_KHRONOS_validation" layer
+#else
+	constexpr bool VALIDATION_ENABLED = false;	//	toggle for including "VK_LAYER_KHRONOS_validation" layer
+#endif
+
+#ifdef __APPLE__
+	constexpr bool PORTABILITY_ENABLED = true;	//	toggle for including "VK_KHR_portability_subset" extension and related flags
+#else
+	constexpr bool PORTABILITY_ENABLED = false;	//	toggle for including "VK_KHR_portability_subset" extension and related flags
+#endif
+
+//  numeric limits
+#define MAX_ENGINE_FLOAT = 10e32;	//	max float value used in compute
+#define MIN_ENGINE_FLOAT = -10e32;	//	min float value used in compute
 
 
-//	##  constructors and destructors
+
+
+
+
+
+//	##  constructor and destructor
 //	######################################################
 
-Schro2D::Schro2D(Schro2DConfig config)
-: viewportWidth_(config.width), viewportHeight_(config.height), simScale_(config.scale),
-portabilityEnabled_(config.portability), validationEnabled_(config.validation) {
+Schro2D::Schro2D(uint32_t width, uint32_t height, double scale)
+: viewportWidth_(width), viewportHeight_(height), simScale_(scale) {
+	if (VALIDATION_ENABLED) {
+		std::cout << ">>> Layer: 'VK_LAYER_KHRONOS_validation' enabled" << std::endl;
+	}
+	if (PORTABILITY_ENABLED) {
+		std::cout << ">>> Extension: 'VK_KHR_portability_subset' enabled" << std::endl;
+	}
+	//	create all engine components
 	createWindow();
 	createInstance();
 	setPhysicalDevice();
@@ -55,15 +82,8 @@ Schro2D::~Schro2D() {
 	if (shaderModule_) {
 		device_.destroyShaderModule(shaderModule_);
 	}
-	for (auto image : imageData_) {
-		if (image.isSwapchainImage) {
-			device_.destroyImageView(image.view);
-		}
-		else {
-			//	...
-		}
-	}
 	for (auto frame : frameData_) {
+		device_.destroyImageView(frame.view);
 		device_.freeCommandBuffers(frame.cmdPool, frame.cmdBuffer);
 		device_.destroyCommandPool(frame.cmdPool);
 		device_.destroySemaphore(frame.renderSem);
@@ -85,6 +105,7 @@ Schro2D::~Schro2D() {
 	if (instance_) { 
 		instance_.destroy(); 
 	}
+	
 	glfwDestroyWindow(window_);
 	glfwTerminate();
 }
@@ -120,7 +141,7 @@ void Schro2D::createInstance() {
 	extensions.emplace_back(vk::EXTSwapchainColorSpaceExtensionName);
 	
 	//	portability extensions and flags
-	if (portabilityEnabled_) {
+	if (PORTABILITY_ENABLED) {
 		flags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
 		extensions.emplace_back(vk::KHRPortabilityEnumerationExtensionName);
 		extensions.emplace_back(vk::KHRGetPhysicalDeviceProperties2ExtensionName);
@@ -128,7 +149,7 @@ void Schro2D::createInstance() {
 
 	//  validation layers
 	std::vector<const char*> layers = {};
-	if (validationEnabled_) {
+	if (VALIDATION_ENABLED) {
 		layers.emplace_back("VK_LAYER_KHRONOS_validation");
 	}
 
@@ -179,7 +200,7 @@ void Schro2D::createDevice() {
 	};
 
 	//	portability device extension
-	if (portabilityEnabled_) {
+	if (PORTABILITY_ENABLED) {
 		deviceExtensions.push_back("VK_KHR_portability_subset");
 	}
 
@@ -226,13 +247,11 @@ void Schro2D::createSwapChain() {
 	vk::SurfaceFormatKHR surfaceFormat;
 	for (size_t i = 0; i < surfaceFormats.size(); i++) {
 		//	standard format, colorspace
-		if (surfaceFormats[i].format == vk::Format::eR8G8B8A8Srgb 
-			&& surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+		if (surfaceFormats[i].format == vk::Format::eR8G8B8A8Srgb && surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
 			surfaceFormat = surfaceFormats[i];
 		}
 		//	hdr (if supported)
-		if (surfaceFormats[i].format == vk::Format::eR16G16B16A16Sfloat 
-			&& surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eHdr10HlgEXT) {
+		if (surfaceFormats[i].format == vk::Format::eR16G16B16A16Sfloat && surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eHdr10HlgEXT) {
 			surfaceFormat = surfaceFormats[i];
 			break;
 		}
@@ -242,14 +261,12 @@ void Schro2D::createSwapChain() {
 
 	VkExtent2D extent2D = { static_cast<uint32_t>(viewportWidth_ * simScale_), static_cast<uint32_t>(viewportHeight_ * simScale_) };
 
-	vk::ImageUsageFlags imageUsageFlags = vk::ImageUsageFlagBits::eColorAttachment 
-		| vk::ImageUsageFlagBits::eTransferDst
-		| vk::ImageUsageFlagBits::eStorage;
+	vk::ImageUsageFlags imageUsageFlags = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage;
 
 	vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
 		vk::SwapchainCreateFlagsKHR(),
 		surface_,
-		swapChainCapabilities.minImageCount,
+		2,
 		surfaceFormat.format,
 		surfaceFormat.colorSpace,
 		extent2D,
@@ -268,7 +285,6 @@ void Schro2D::createSwapChain() {
 	swapchain_ = device_.createSwapchainKHR(swapChainCreateInfo);
 	auto images = device_.getSwapchainImagesKHR(swapchain_);
 	frameData_.resize(images.size());
-	imageData_.resize(images.size());
 
 	vk::FenceCreateInfo fenceCreateInfo = { vk::FenceCreateFlagBits::eSignaled };
 
@@ -276,8 +292,7 @@ void Schro2D::createSwapChain() {
 
 	for (size_t i = 0; i < images.size(); i++) {
 		//	image structures
-		imageData_[i].image = images[i];
-		imageData_[i].isSwapchainImage = true;
+		frameData_[i].image = images[i];
 
 		vk::ImageViewCreateInfo imageViewCreateInfo = {
 			vk::ImageViewCreateFlags(),
@@ -290,7 +305,7 @@ void Schro2D::createSwapChain() {
 			},
 			{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
 		};
-		imageData_[i].view = device_.createImageView(imageViewCreateInfo);
+		frameData_[i].view = device_.createImageView(imageViewCreateInfo);
 
 		//	sync structures
 		frameData_[i].fence = device_.createFence(fenceCreateInfo);
@@ -388,7 +403,7 @@ void Schro2D::createComputePipeline() {
 	descriptorSets_ = device_.allocateDescriptorSets(descriptorSetAllocateInfo);
 
 	for (size_t i = 0; i < frameData_.size(); i++) {
-		vk::DescriptorImageInfo descriptorImageInfo = { nullptr, imageData_[i].view, vk::ImageLayout::eGeneral };
+		vk::DescriptorImageInfo descriptorImageInfo = { nullptr, frameData_[i].view, vk::ImageLayout::eGeneral };
 
 		vk::WriteDescriptorSet writeDescriptorSet = { 
 			descriptorSets_[i],
@@ -438,7 +453,7 @@ void Schro2D::draw(uint8_t frameIdx) {
 		vk::ImageLayout::eGeneral,
 		queueFamily_,
 		queueFamily_,
-		imageData_[imageIdx].image,
+		frameData_[imageIdx].image,
 		imageSubresourceRange
 	};
 
@@ -446,14 +461,16 @@ void Schro2D::draw(uint8_t frameIdx) {
 
     frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo);
 
-	// vk::ClearColorValue clearValue = { 0.5f, 0.0f, 0.5f, 1.0f };
-	// commandBuffers_[frameIdx].clearColorImage(images_[swapchainIndex], vk::ImageLayout::eGeneral, clearValue, imageSubresourceRange);
+	//	clear color for debug
+	//	vk::ClearColorValue clearValue = { 0.5f, 0.0f, 0.5f, 1.0f };
+	//	frameData_[frameIdx].cmdBuffer.clearColorImage(imageData_[imageIdx].image, vk::ImageLayout::eGeneral, clearValue, imageSubresourceRange);
 
+	//	compute schrodinger equation
 	frameData_[frameIdx].cmdBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline_);
 	frameData_[frameIdx].cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout_, 0, descriptorSets_[imageIdx], nullptr);
 	frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
 
-    imageBarrier = {
+    vk::ImageMemoryBarrier2 imageBarrier2 = {
 		vk::PipelineStageFlagBits2::eAllCommands,
 		vk::AccessFlagBits2::eMemoryWrite,
 		vk::PipelineStageFlagBits2::eAllCommands,
@@ -462,11 +479,13 @@ void Schro2D::draw(uint8_t frameIdx) {
 		vk::ImageLayout::ePresentSrcKHR,
 		queueFamily_,
 		queueFamily_,
-		imageData_[imageIdx].image,
+		frameData_[imageIdx].image,
 		imageSubresourceRange
 	};
 
-    frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo);
+	vk::DependencyInfo dependencyInfo2 = { vk::DependencyFlags(), nullptr, nullptr, imageBarrier2 };
+
+    frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo2);
 
 	//	##  CMD END
 	//	######################################################
@@ -506,6 +525,6 @@ void Schro2D::run() {
 	while (!glfwWindowShouldClose(window_)) {
 		glfwPollEvents();
 		draw(frameIdx);
-		frameIdx = (frameIdx + 1) % ((uint8_t)frameData_.size());
+		frameIdx ^= 1;
 	}
 }

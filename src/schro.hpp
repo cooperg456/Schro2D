@@ -16,15 +16,6 @@
 
 
 
-//	struct to hold engine configuration variables
-struct Schro2DConfig {
-	uint32_t width;		//	glfw window width (pixels)
-	uint32_t height;	//	glfw window height (pixels)
-	double scale;		//	multiplier for sim resolution
-	bool validation;	//	toggle for including "VK_LAYER_KHRONOS_validation" layer
-	bool portability;	//	toggle for including "VK_KHR_portability_subset" extension and flags
-};
-
 //	struct to hold per frame data
 struct FrameData {
 	vk::Fence fence;				//	fence
@@ -32,20 +23,15 @@ struct FrameData {
 	vk::Semaphore renderSem;		//	render semaphore
 	vk::CommandBuffer cmdBuffer;	//	command buffer
 	vk::CommandPool cmdPool;		//	command pool
-};
-
-//	struct to hold image data
-struct ImageData {
-	vk::Image image;				//	image
-	vk::ImageView view;				//	image view
-	bool isSwapchainImage = false;	//	is swapchain image
+	vk::Image image;				//	swapchain image
+	vk::ImageView view;				//	swapchain image view
 };
 
 //	schrodinger equation solver using vulkan
 class Schro2D {
 public:
 	//	initialize engine components
-	Schro2D(Schro2DConfig config);
+	Schro2D(uint32_t width, uint32_t height, double scale);
 	//	cleanup vulkan/glfw
 	~Schro2D();
 	//	starts program
@@ -55,21 +41,21 @@ private:
 	//	##  initializers for engine components
 	//	######################################################
 
-	//	initializes window
+	//	initializes window using glfw 3.4
 	void createWindow();
-	//	initializes instance and surface
+	//	initializes vulkan instance with required extensions and glfw window surface
 	void createInstance();
-	//	sets physical device
+	//	selects supported gpu from list of hardware options
 	void setPhysicalDevice();
-	//	sets queue family
+	//	selects supported queue family on gpu
 	void setQueueFamily();
-	//	initializes device, queue
+	//	initializes logical device and queue
 	void createDevice();
-	//	initializes allocator
+	//	initializes vma allocator
 	void createAllocator();
-	//	initializes swap chain, images, image views, fence, semaphores
+	//	initializes swapchain with images and sync structures
 	void createSwapChain();
-	//	initializes stuff for compute pipeline
+	//	initializes compute pipeline, storage buffers, and descriptor sets
 	void createComputePipeline();
 
 	//	##  simulation loop functions
@@ -81,12 +67,12 @@ private:
 	//	##	context configuration and components:
 	//	######################################################
 
+	//	simulation config
 	const uint32_t viewportWidth_;		//	glfw window width (pixels)
 	const uint32_t viewportHeight_;		//	glfw window height (pixels)
 	const double simScale_;				//	multiplier for sim resolution
-	const bool validationEnabled_;		//	toggle for including "VK_LAYER_KHRONOS_validation" layer
-	const bool portabilityEnabled_;		//	toggle for including "VK_KHR_portability_subset" extension and flags
 	
+	//	engine components
 	vk::Instance instance_{};				//	instance
 	vk::PhysicalDevice physicalDevice_{};	//	physical device
 	uint32_t queueFamily_ = UINT32_MAX;		//	queue family
@@ -94,16 +80,20 @@ private:
 	vk::Queue queue_{};						//	queue
 	VmaAllocator allocator_{};				//	allocator
 
+	//	render components
 	GLFWwindow* window_ {};					//	window
 	VkSurfaceKHR surface_{};				//	surface
 	vk::SwapchainKHR swapchain_{};			//	swapchain
 	std::vector<FrameData> frameData_{};	//	per frame data structures
-	std::vector<ImageData> imageData_{};	//	image data structures
 
+	//	compute pipeline
 	vk::ShaderModule shaderModule_{};					//	shader module
 	vk::DescriptorSetLayout descriptorSetLayout_{};		//	descriptor set layout
 	vk::PipelineLayout pipelineLayout_{};				//	pipeline layout
 	vk::Pipeline computePipeline_{};					//	compute pipeline
 	vk::DescriptorPool descriptorPool_{};				//	descriptor pool
 	std::vector<vk::DescriptorSet> descriptorSets_{};	//	descriptor sets
+
+	//	compute storage
+	std::vector<vk::Buffer> psiBuffer_{};	//	buffers (ssbo) containing wave function values
 };

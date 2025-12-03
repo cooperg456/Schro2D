@@ -17,6 +17,8 @@ target_sources(Schro2D PRIVATE ${cppFiles})
 target_link_libraries(Schro2D PRIVATE Vulkan::Vulkan glfw)
 set_target_properties(Schro2D PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 
+target_compile_definitions(Schro2D PRIVATE $<$<CONFIG:Debug>:DEBUG>)
+
 
 
 ##	compile spirv

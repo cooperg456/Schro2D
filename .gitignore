@@ -46,3 +46,4 @@ build/
 
 # etc
 .vscode/
+.DS_store
