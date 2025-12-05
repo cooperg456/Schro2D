@@ -1,6 +1,7 @@
 #pragma once
 
 //	std lib
+#include <complex>
 #include <vector>
 
 //	glfw3
@@ -35,7 +36,8 @@ public:
 	//	cleanup vulkan/glfw
 	~Schro2D();
 	//	starts program
-	void run();
+	void run(std::vector<std::vector<std::complex<float>>>& wavefn,
+		std::vector<std::vector<std::complex<float>>>& potential, float pushConst);
 
 private:
 	//	##  initializers for engine components
@@ -62,7 +64,7 @@ private:
 	//	######################################################
 
 	//	update window
-	void draw(uint8_t frameIdx);
+	void draw(uint8_t frameIdx, float pushConst);
 
 	//	##	context configuration and components:
 	//	######################################################
@@ -95,5 +97,8 @@ private:
 	std::vector<vk::DescriptorSet> descriptorSets_{};	//	descriptor sets
 
 	//	compute storage
-	std::vector<vk::Buffer> psiBuffer_{};	//	buffers (ssbo) containing wave function values
+	std::vector<vk::Buffer> psiBuffer_{};	//	buffers containing wave function values
+	std::vector<VmaAllocation> psiAlloc_{};	//	memory allocation for psi buffer
+	vk::Buffer vBuffer_{};					//	buffers containing potential values
+	VmaAllocation vAlloc_{};				//	memory allocation for v buffer
 };
