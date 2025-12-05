@@ -47,7 +47,8 @@ int main() {
 		}
 	}
 
-	schro.run(psi, v, 0.1);
+	float dt = 1e-16;	//	0.1 fs / frame
+	schro.run(psi, v, dt);
 
 	return 0;
 }

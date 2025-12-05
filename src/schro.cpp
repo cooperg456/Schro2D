@@ -33,28 +33,26 @@
 	constexpr bool PORTABILITY_ENABLED = false;	//	toggle for including "VK_KHR_portability_subset" extension and related flags
 #endif
 
-//  numeric limits
-#define MAX_INPUT_FLOAT = 10e33;	//	max float value sent to gpu
-#define MIN_INPUT_FLOAT = -10e33;	//	min float value sent to gpu
 
 
 
 
 
 
-
-//	##  constructor and destructor
-//	######################################################
+//	---------------------------------------------------
+//	--	constructor and destructor:
+//	---------------------------------------------------
+#pragma region constructor;
 
 Schro2D::Schro2D(uint32_t width, uint32_t height, double scale)
 : viewportWidth_(width), viewportHeight_(height), simScale_(scale) {
 	if (VALIDATION_ENABLED) {
-		std::cout << ">>> Layer: 'VK_LAYER_KHRONOS_validation' enabled" << std::endl;
+		std::cout << "Schro2D: 'VK_LAYER_KHRONOS_validation' enabled" << std::endl;
 	}
 	if (PORTABILITY_ENABLED) {
-		std::cout << ">>> Extension: 'VK_KHR_portability_subset' enabled" << std::endl;
+		std::cout << "Schro2D: 'VK_KHR_portability_subset' enabled" << std::endl;
 	}
-	//	create all engine components
+	//	create engine components
 	createWindow();
 	createInstance();
 	setPhysicalDevice();
@@ -65,32 +63,23 @@ Schro2D::Schro2D(uint32_t width, uint32_t height, double scale)
 	createComputePipeline();
 }
 
+
+
+
 Schro2D::~Schro2D() {
 	device_.waitIdle();
 
-	if (vBuffer_) {
-		vmaDestroyBuffer(allocator_, vBuffer_, vAlloc_);
-	}
 	for (size_t i = 0; i < psiBuffer_.size(); i++) {
-		if (psiBuffer_[i]) {
-			vmaDestroyBuffer(allocator_, psiBuffer_[i], psiAlloc_[i]);
-		}
+		if (psiBuffer_[i]) vmaDestroyBuffer(allocator_, psiBuffer_[i], psiAlloc_[i]);
 	}
-	if (descriptorPool_) {
-		device_.destroyDescriptorPool(descriptorPool_);
-	}
-	if (computePipeline_) {
-		device_.destroyPipeline(computePipeline_);
-	}
-	if (pipelineLayout_) {
-		device_.destroyPipelineLayout(pipelineLayout_);
-	}
-	if (descriptorSetLayout_) {
-		device_.destroyDescriptorSetLayout(descriptorSetLayout_);
-	}
-	if (shaderModule_) {
-		device_.destroyShaderModule(shaderModule_);
-	}
+	if (vBuffer_) vmaDestroyBuffer(allocator_, vBuffer_, vAlloc_);
+
+	if (descriptorPool_) device_.destroyDescriptorPool(descriptorPool_);
+	if (computePipeline_) device_.destroyPipeline(computePipeline_);
+	if (pipelineLayout_) device_.destroyPipelineLayout(pipelineLayout_);
+	if (descriptorSetLayout_) device_.destroyDescriptorSetLayout(descriptorSetLayout_);
+	if (shaderModule_) device_.destroyShaderModule(shaderModule_);
+
 	for (auto frame : frameData_) {
 		device_.destroyImageView(frame.view);
 		device_.freeCommandBuffers(frame.cmdPool, frame.cmdBuffer);
@@ -99,54 +88,50 @@ Schro2D::~Schro2D() {
 		device_.destroySemaphore(frame.imageSem);
 		device_.destroyFence(frame.fence);
 	}
-	if (swapchain_) {
-		device_.destroySwapchainKHR(swapchain_);
-	}
-	if (allocator_) { 
-		vmaDestroyAllocator(allocator_); 
-	}
-	if (device_) { 
-		device_.destroy(); 
-	}
-	if (surface_) { 
-		vkDestroySurfaceKHR(instance_, surface_, nullptr); 
-	}
-	if (instance_) { 
-		instance_.destroy(); 
-	}
+	if (swapchain_) device_.destroySwapchainKHR(swapchain_);
+	if (allocator_) vmaDestroyAllocator(allocator_);
+	if (device_) device_.destroy(); 
+	if (instance_) instance_.destroy(); 
+	if (surface_) vkDestroySurfaceKHR(instance_, surface_, nullptr);
 	
 	glfwDestroyWindow(window_);
 	glfwTerminate();
 }
 
-//	##  initializers for engine components
-//	######################################################
+
+
+
+//	---------------------------------------------------
+//	--	initializers for engine components:
+//	---------------------------------------------------
+#pragma region initializers;
 
 void Schro2D::createWindow() {
-	if (!glfwInit()) {
-		throw std::runtime_error("Failed to initialize glfw");
-	}
-
+	if (!glfwInit()) throw std::runtime_error("Failed to initialize glfw");
+	
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);	// tell glfw not to create OpenGL context. necessary for Vulkan
 	glfwWindowHint(GLFW_RESIZABLE, false);
 
 	window_ = glfwCreateWindow(viewportWidth_, viewportHeight_, "Schro2D : Vulkan", nullptr, nullptr);
 }
 
+
+
 void Schro2D::createInstance() {
-	vk::ApplicationInfo appInfo = {
-		"Schro2D",					//	application
-		VK_MAKE_VERSION(0, 1, 0),
-		"Minimal_Vk_GLFW",			//	engine
-		VK_MAKE_VERSION(0, 1, 0),
-		VK_API_VERSION_1_3			// vulkan
+	vk::ApplicationInfo appInfo{ 
+		"Schro2D", VK_MAKE_VERSION(0, 1, 0), 			//	application
+		"Minimal_Vk_GLFW", VK_MAKE_VERSION(0, 1, 0), 	//	engine
+		VK_API_VERSION_1_3 								//	vulkan
 	};
+
+	vk::InstanceCreateFlags flags{};
+	std::vector<const char*> layers{};
+	std::vector<const char*> extensions{};
 	
 	//	glfw extensions and flags
-	vk::InstanceCreateFlags flags = {};
 	uint32_t glfwExtensionsCount = 0;
 	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
-	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
+	for (uint32_t i = 0; i < glfwExtensionsCount; i++) extensions.emplace_back(glfwExtensions[i]);
 	extensions.emplace_back(vk::EXTSwapchainColorSpaceExtensionName);
 	
 	//	portability extensions and flags
@@ -157,20 +142,17 @@ void Schro2D::createInstance() {
 	}
 
 	//  validation layers
-	std::vector<const char*> layers = {};
-	if (VALIDATION_ENABLED) {
-		layers.emplace_back("VK_LAYER_KHRONOS_validation");
-	}
+	if (VALIDATION_ENABLED) layers.emplace_back("VK_LAYER_KHRONOS_validation");
 
-	vk::InstanceCreateInfo instanceCreateInfo = { flags, &appInfo, layers, extensions };
-
+	//	create components
+	vk::InstanceCreateInfo instanceCreateInfo{ flags, &appInfo, layers, extensions };
 	instance_ = vk::createInstance(instanceCreateInfo);
 
 	VkResult result = glfwCreateWindowSurface(instance_, window_, nullptr, &surface_);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error(string_VkResult(result));
-	}
+	if (result != VK_SUCCESS) throw std::runtime_error(string_VkResult(result));
 }
+
+
 
 void Schro2D::setPhysicalDevice() {
 	//  TODO?:  improve device selection logic. 
@@ -189,54 +171,47 @@ void Schro2D::setQueueFamily() {
 	constexpr vk::QueueFlags requiredFlags = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute;
 	std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice_.getQueueFamilyProperties();
 	for (queueFamily_ = 0; queueFamily_ < (uint32_t)queueFamilyProperties.size(); queueFamily_++) {
-		if ((queueFamilyProperties[queueFamily_].queueFlags & requiredFlags) == requiredFlags) { 
-			return;
-		}
+		if ((queueFamilyProperties[queueFamily_].queueFlags & requiredFlags) == requiredFlags) return;
 	}
 	throw std::runtime_error("No suitable queue family was found");
 }
 
+
+
 void Schro2D::createDevice() {
 	float queuePriority = 1.0f;
-	vk::DeviceQueueCreateInfo deviceQueueCreateInfo = { 
-		vk::DeviceQueueCreateFlags(), 
-		queueFamily_, 
-		1, 
-		&queuePriority
-	};
-	std::vector<const char*> deviceExtensions = { 
-		vk::KHRSwapchainExtensionName,
-	};
+	vk::DeviceQueueCreateInfo deviceQueueCreateInfo = { vk::DeviceQueueCreateFlags(), queueFamily_, 1, &queuePriority };
+
+	std::vector<const char*> deviceExtensions{};
+	deviceExtensions.emplace_back(vk::KHRSwapchainExtensionName);
 
 	//	portability device extension
-	if (PORTABILITY_ENABLED) {
-		deviceExtensions.push_back("VK_KHR_portability_subset");
-	}
+	if (PORTABILITY_ENABLED) deviceExtensions.emplace_back("VK_KHR_portability_subset");
 
-	vk::PhysicalDeviceVulkan13Features deviceFeatures13 = {};
+	//	enable sync 2 feature
+	vk::PhysicalDeviceVulkan13Features deviceFeatures13{};
 	deviceFeatures13.synchronization2 = true;
+	vk::PhysicalDeviceFeatures2 deviceFeatures2{};
+	deviceFeatures2.pNext = deviceFeatures13;
 
-	vk::PhysicalDeviceFeatures2 deviceFeatures = {};
-	deviceFeatures.pNext = deviceFeatures13;
-
-	vk::DeviceCreateInfo deviceCreateInfo = {
+	//	create components
+	vk::DeviceCreateInfo deviceCreateInfo{
 		vk::DeviceCreateFlags(), 
-		1, 
-		&deviceQueueCreateInfo, 
-		0, 
+		deviceQueueCreateInfo, 
 		nullptr, 
-		static_cast<uint32_t>(deviceExtensions.size()), 
-		deviceExtensions.data(),
-		nullptr,
-		deviceFeatures
+		deviceExtensions, 
+		nullptr, &deviceFeatures2 
 	};
 	
 	device_ = physicalDevice_.createDevice(deviceCreateInfo);
+
 	queue_ = device_.getQueue(queueFamily_, 0);
 }
 
+
+
 void Schro2D::createAllocator() {
-	VmaAllocatorCreateInfo allocatorCreateInfo = {};
+	VmaAllocatorCreateInfo allocatorCreateInfo{};
 	allocatorCreateInfo.flags = VmaAllocatorCreateFlags();
 	allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
 	allocatorCreateInfo.physicalDevice = static_cast<VkPhysicalDevice>(physicalDevice_);
@@ -244,10 +219,10 @@ void Schro2D::createAllocator() {
 	allocatorCreateInfo.instance = static_cast<VkInstance>(instance_);
 
 	VkResult result = vmaCreateAllocator(&allocatorCreateInfo, &allocator_);
-	if (result != VK_SUCCESS) {
-		throw std::runtime_error(string_VkResult(result));
-	}
+	if (result != VK_SUCCESS) throw std::runtime_error(string_VkResult(result));
 }
+
+
 
 void Schro2D::createSwapChain() {
 	vk::SurfaceCapabilitiesKHR swapChainCapabilities = physicalDevice_.getSurfaceCapabilitiesKHR(surface_);
@@ -255,55 +230,46 @@ void Schro2D::createSwapChain() {
 	std::vector<vk::SurfaceFormatKHR> surfaceFormats = physicalDevice_.getSurfaceFormatsKHR(surface_);
 	vk::SurfaceFormatKHR surfaceFormat;
 	for (size_t i = 0; i < surfaceFormats.size(); i++) {
-		//	standard format, colorspace
-		if (surfaceFormats[i].format == vk::Format::eR8G8B8A8Srgb && surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
-			surfaceFormat = surfaceFormats[i];
+		if (surfaceFormats[i] == vk::SurfaceFormatKHR(vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear)) {
+			surfaceFormat = surfaceFormats[i];	//	standard format, colorspace
 		}
-		//	hdr (if supported)
-		if (surfaceFormats[i].format == vk::Format::eR16G16B16A16Sfloat && surfaceFormats[i].colorSpace == vk::ColorSpaceKHR::eHdr10HlgEXT) {
-			surfaceFormat = surfaceFormats[i];
+		if (surfaceFormats[i] == vk::SurfaceFormatKHR(vk::Format::eR16G16B16A16Sfloat, vk::ColorSpaceKHR::eHdr10HlgEXT)) {
+			surfaceFormat = surfaceFormats[i];	//	hdr (if supported)
 			break;
 		}
 	}
 
-	vk::PresentModeKHR presentMode = vk::PresentModeKHR::eFifo;
-
-	VkExtent2D extent2D = { static_cast<uint32_t>(viewportWidth_ * simScale_), static_cast<uint32_t>(viewportHeight_ * simScale_) };
-
-	vk::ImageUsageFlags imageUsageFlags = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage;
-
-	vk::SwapchainCreateInfoKHR swapChainCreateInfo = {
+	vk::SwapchainCreateInfoKHR swapChainCreateInfo{
 		vk::SwapchainCreateFlagsKHR(),
 		surface_,
 		2,
 		surfaceFormat.format,
 		surfaceFormat.colorSpace,
-		extent2D,
+		{ 
+			static_cast<uint32_t>(viewportWidth_ * simScale_), 
+			static_cast<uint32_t>(viewportHeight_ * simScale_) 
+		},
 		1,
-		imageUsageFlags,
+		vk::ImageUsageFlagBits::eColorAttachment | 
+		vk::ImageUsageFlagBits::eStorage,
 		vk::SharingMode::eExclusive,
-		0,
+		queueFamily_,
 		nullptr,
 		swapChainCapabilities.currentTransform,
 		vk::CompositeAlphaFlagBitsKHR::eOpaque,
-		presentMode,
-		false,
-		nullptr
+		vk::PresentModeKHR::eFifo,
+		false	
 	};
 
 	swapchain_ = device_.createSwapchainKHR(swapChainCreateInfo);
+
 	auto images = device_.getSwapchainImagesKHR(swapchain_);
 	frameData_.resize(images.size());
-
-	vk::FenceCreateInfo fenceCreateInfo = { vk::FenceCreateFlagBits::eSignaled };
-
-	vk::CommandPoolCreateInfo commandPoolCreateInfo = { vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueFamily_ };
-
 	for (size_t i = 0; i < images.size(); i++) {
 		//	image structures
 		frameData_[i].image = images[i];
 
-		vk::ImageViewCreateInfo imageViewCreateInfo = {
+		vk::ImageViewCreateInfo imageViewCreateInfo{
 			vk::ImageViewCreateFlags(),
 			images[i],
 			vk::ImageViewType::e2D,
@@ -312,31 +278,32 @@ void Schro2D::createSwapChain() {
 				vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity,
 				vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity
 			},
-			{ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+			{ 
+				vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 
+			}
 		};
+
 		frameData_[i].view = device_.createImageView(imageViewCreateInfo);
 
 		//	sync structures
-		frameData_[i].fence = device_.createFence(fenceCreateInfo);
+		frameData_[i].fence = device_.createFence({vk::FenceCreateFlagBits::eSignaled});
 		frameData_[i].imageSem = device_.createSemaphore(vk::SemaphoreCreateInfo());
 		frameData_[i].renderSem = device_.createSemaphore(vk::SemaphoreCreateInfo());
 
 		//	cmd structures
-		frameData_[i].cmdPool = device_.createCommandPool(commandPoolCreateInfo);
+		frameData_[i].cmdPool = device_.createCommandPool({vk::CommandPoolCreateFlagBits::eResetCommandBuffer, queueFamily_});
 
-		vk::CommandBufferAllocateInfo commandBufferAllocateInfo = {
-			frameData_[i].cmdPool,
-			vk::CommandBufferLevel::ePrimary,
-			1
-		};
+		vk::CommandBufferAllocateInfo commandBufferAllocateInfo{ frameData_[i].cmdPool, vk::CommandBufferLevel::ePrimary, 1 };
 
 		frameData_[i].cmdBuffer = device_.allocateCommandBuffers(commandBufferAllocateInfo).front();
 	}
 }
 
+
+
 void Schro2D::createComputePipeline() {
 	// read SPIR-V file to create shader module
-    std::ifstream shaderFile("bin/shaders/schro.comp.spv", std::ios::binary | std::ios::ate);
+    std::ifstream shaderFile("bin/schro.spv", std::ios::binary | std::ios::ate);
     if (!shaderFile.is_open()) {
         throw std::runtime_error("Failed to read shader file");
     }
@@ -347,124 +314,90 @@ void Schro2D::createComputePipeline() {
     shaderFile.read(shaderData.data(), shaderSize);
 	shaderFile.close();
 
-    vk::ShaderModuleCreateInfo shaderModuleCreateInfo = {
+    vk::ShaderModuleCreateInfo shaderModuleCreateInfo{
 		vk::ShaderModuleCreateFlags(),
-		(uint32_t)shaderSize,
-		reinterpret_cast<const uint32_t*>(shaderData.data()),
+		(uint32_t)shaderSize, reinterpret_cast<const uint32_t*>(shaderData.data()),
 	};
 
     shaderModule_ = device_.createShaderModule(shaderModuleCreateInfo);
 
-	VmaAllocationCreateInfo gpuAllocInfo = {};
+	VmaAllocationCreateInfo gpuAllocInfo{};
 	gpuAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
 	gpuAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT; 
 
 	psiBuffer_.resize(2);
 	psiAlloc_.resize(2);
-	vk::DeviceSize storageBufferSize = sizeof(float) * (uint32_t)(2 * viewportWidth_ * viewportHeight_ * simScale_ * simScale_);
-	vk::BufferCreateInfo storageBufferCreateInfo = {
+	vk::BufferCreateInfo storageBufferCreateInfo{
 		vk::BufferCreateFlags(), 
-		storageBufferSize, 
+		sizeof(float) * (uint32_t)(2 * viewportWidth_ * viewportHeight_ * simScale_ * simScale_), 
 		vk::BufferUsageFlagBits::eStorageBuffer | 
 		vk::BufferUsageFlagBits::eTransferDst, 
 		vk::SharingMode::eExclusive
 	};
 	for (size_t i = 0; i < 2; i++) {
-		vmaCreateBuffer(
-			allocator_, 
-			storageBufferCreateInfo, 
-			&gpuAllocInfo, 
-			reinterpret_cast<VkBuffer*>(&psiBuffer_[i]), 
-			&psiAlloc_[i], 
-			nullptr
+		vmaCreateBuffer(allocator_, storageBufferCreateInfo, &gpuAllocInfo, 
+			reinterpret_cast<VkBuffer*>(&psiBuffer_[i]), &psiAlloc_[i], nullptr
 		);
 	}
 	vmaCreateBuffer(
-		allocator_, 
-		storageBufferCreateInfo, 
-		&gpuAllocInfo, 
-		reinterpret_cast<VkBuffer*>(&vBuffer_), 
-		&vAlloc_, 
-		nullptr
+		allocator_, storageBufferCreateInfo, &gpuAllocInfo, 
+		reinterpret_cast<VkBuffer*>(&vBuffer_), &vAlloc_, nullptr
 	);
 
 	// boring vulkan boilerplate
-	std::vector<vk::DescriptorSetLayoutBinding> descriptorSetLayoutBindings;
-	descriptorSetLayoutBindings.emplace_back(0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute);
-	descriptorSetLayoutBindings.emplace_back(1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
-	descriptorSetLayoutBindings.emplace_back(2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
-	descriptorSetLayoutBindings.emplace_back(3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
+	std::vector<vk::DescriptorSetLayoutBinding> descriptorSetLayoutBindings{
+		{ 0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute },
+		{ 1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute },
+		{ 2, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute },
+		{ 3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute }
+	};
 
-	vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
-		vk::DescriptorSetLayoutCreateFlags(),
-		(uint32_t)descriptorSetLayoutBindings.size(), 
-		descriptorSetLayoutBindings.data()
+	vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{
+		vk::DescriptorSetLayoutCreateFlags(), descriptorSetLayoutBindings
 	};
 
 	descriptorSetLayout_ = device_.createDescriptorSetLayout(descriptorSetLayoutCreateInfo);
 
-	vk::PushConstantRange pushConstantRange = { 
-		vk::ShaderStageFlagBits::eCompute, 
-		0, 
-		sizeof(float) 
-	};
+	vk::PushConstantRange pushConstantRange{ vk::ShaderStageFlagBits::eCompute, 0, sizeof(float) };
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
-		vk::PipelineLayoutCreateFlags(),
-		descriptorSetLayout_,
-		pushConstantRange
+	vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo{
+		vk::PipelineLayoutCreateFlags(), descriptorSetLayout_, pushConstantRange
 	};
 
 	pipelineLayout_ = device_.createPipelineLayout(pipelineLayoutCreateInfo);
 
-	vk::PipelineShaderStageCreateInfo pipelineShaderStageCreateInfo = {
-		vk::PipelineShaderStageCreateFlags(),
-		vk::ShaderStageFlagBits::eCompute,
-		shaderModule_,
-		"main"
+	vk::PipelineShaderStageCreateInfo pipelineShaderStageCreateInfo{
+		vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eCompute, shaderModule_, "main"
 	};
 
-	vk::ComputePipelineCreateInfo computePipelineCreateInfo = {
-		vk::PipelineCreateFlags(),
-		pipelineShaderStageCreateInfo,
-		pipelineLayout_
+	vk::ComputePipelineCreateInfo computePipelineCreateInfo{
+		vk::PipelineCreateFlags(), pipelineShaderStageCreateInfo, pipelineLayout_
 	};
 
 	computePipeline_ = device_.createComputePipeline(nullptr, computePipelineCreateInfo).value;
 
-	std::vector<vk::DescriptorPoolSize> descriptorPoolSizes = {
-		{ vk::DescriptorType::eStorageImage, 2 },
-		{ vk::DescriptorType::eStorageBuffer, 6 }
+	std::vector<vk::DescriptorPoolSize> descriptorPoolSizes{
+		{ vk::DescriptorType::eStorageImage, 2 }, { vk::DescriptorType::eStorageBuffer, 6 }
 	};
 
-	vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo = {
-		vk::DescriptorPoolCreateFlags(),
-		2, 
-		descriptorPoolSizes
-	};
+	vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo{ vk::DescriptorPoolCreateFlags(), 2, descriptorPoolSizes };
 
 	descriptorPool_ = device_.createDescriptorPool(descriptorPoolCreateInfo);
 
 	std::vector<vk::DescriptorSetLayout> layouts(2, descriptorSetLayout_);
 
-	vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo = {
-		descriptorPool_,
-		(uint32_t)layouts.size(),
-		layouts.data()
-	};
+	vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo{ descriptorPool_, layouts };
 
 	descriptorSets_ = device_.allocateDescriptorSets(descriptorSetAllocateInfo);
 
-	std::vector<vk::DescriptorBufferInfo> descriptorBufferInfos = {
-		{ psiBuffer_[0], 0, vk::WholeSize },
-		{ psiBuffer_[1], 0, vk::WholeSize },
-		{ vBuffer_, 0, vk::WholeSize }
+	std::vector<vk::DescriptorBufferInfo> descriptorBufferInfos{
+		{ psiBuffer_[0], 0, vk::WholeSize }, { psiBuffer_[1], 0, vk::WholeSize }, { vBuffer_, 0, vk::WholeSize }
 	};
 
 	for (size_t i = 0; i < 2; i++) {
-		vk::DescriptorImageInfo descriptorImageInfo = { nullptr, frameData_[i].view, vk::ImageLayout::eGeneral };
+		vk::DescriptorImageInfo descriptorImageInfo{ nullptr, frameData_[i].view, vk::ImageLayout::eGeneral };
 
-		std::vector<vk::WriteDescriptorSet> writeDescriptorSets = { 
+		std::vector<vk::WriteDescriptorSet> writeDescriptorSets{ 
 			{ descriptorSets_[i], 0, 0, 1, vk::DescriptorType::eStorageImage, &descriptorImageInfo, nullptr, nullptr },
 			{ descriptorSets_[i], 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &descriptorBufferInfos[i], nullptr },
 			{ descriptorSets_[i], 2, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &descriptorBufferInfos[i ^ 1], nullptr },
@@ -475,133 +408,112 @@ void Schro2D::createComputePipeline() {
 	}
 }
 
-//	##  simulation loop functions
-//	######################################################
+
+
+//	---------------------------------------------------
+//	--	simulation loop function:
+//	---------------------------------------------------
+#pragma region sim loop;
 
 void Schro2D::draw(uint8_t frameIdx, float pushConst) {
 	vk::Result waitResult = device_.waitForFences(frameData_[frameIdx].fence, true, 0xFFFFFFFF);
-	if (waitResult != vk::Result::eSuccess) {
-		throw std::runtime_error(vk::to_string(waitResult));
-	}
+	if (waitResult != vk::Result::eSuccess) throw std::runtime_error(vk::to_string(waitResult));
 	device_.resetFences(frameData_[frameIdx].fence);
 
 	uint32_t imageIdx;
 	vk::Result acquireResult = device_.acquireNextImageKHR(swapchain_, 0xFFFFFFFF, frameData_[frameIdx].imageSem, nullptr, &imageIdx);
-	if (acquireResult != vk::Result::eSuccess) {
-		throw std::runtime_error(vk::to_string(acquireResult));
-	}
+	if (acquireResult != vk::Result::eSuccess) throw std::runtime_error(vk::to_string(acquireResult));
 
 	frameData_[frameIdx].cmdBuffer.reset();
 	frameData_[frameIdx].cmdBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-	//	##  CMD BEGIN
-	//	######################################################
+	//	---------------------------------------------------
+	//	--	begin cmd:
+	//	---------------------------------------------------
 
-	vk::ImageSubresourceRange imageSubresourceRange = {
-		vk::ImageAspectFlagBits::eColor,
-		0, vk::RemainingMipLevels,
-		0, vk::RemainingArrayLayers
+	vk::ImageSubresourceRange imageSubresourceRange{
+		vk::ImageAspectFlagBits::eColor, 0, vk::RemainingMipLevels, 0, vk::RemainingArrayLayers
 	};
 
-    vk::ImageMemoryBarrier2 imageBarrier = {
-		vk::PipelineStageFlagBits2::eAllCommands,
-		vk::AccessFlagBits2::eMemoryWrite,
-		vk::PipelineStageFlagBits2::eAllCommands,
-		vk::AccessFlagBits2::eMemoryRead,
-		vk::ImageLayout::eUndefined,
-		vk::ImageLayout::eGeneral,
-		queueFamily_,
-		queueFamily_,
-		frameData_[imageIdx].image,
-		imageSubresourceRange
+    vk::ImageMemoryBarrier2 imageBarrier{
+		vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryWrite,
+		vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead,
+		vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral,
+		queueFamily_, queueFamily_, frameData_[imageIdx].image, imageSubresourceRange
 	};
 
-	vk::DependencyInfo dependencyInfo = { vk::DependencyFlags(), nullptr, nullptr, imageBarrier };
+	vk::DependencyInfo dependencyInfo{ vk::DependencyFlags(), nullptr, nullptr, imageBarrier };
 
     frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo);
 
-	//	clear color for debug
-	//	vk::ClearColorValue clearValue = { 0.5f, 0.0f, 0.5f, 1.0f };
-	//	frameData_[frameIdx].cmdBuffer.clearColorImage(imageData_[imageIdx].image, vk::ImageLayout::eGeneral, clearValue, imageSubresourceRange);
-
-	//	compute schrodinger equation
+	//	do schrodinger equation
 	frameData_[frameIdx].cmdBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline_);
 	frameData_[frameIdx].cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout_, 0, descriptorSets_[imageIdx], nullptr);
 	frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(float), &pushConst);
 	frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
 
-    vk::ImageMemoryBarrier2 imageBarrier2 = {
-		vk::PipelineStageFlagBits2::eAllCommands,
-		vk::AccessFlagBits2::eMemoryWrite,
-		vk::PipelineStageFlagBits2::eAllCommands,
-		vk::AccessFlagBits2::eMemoryRead,
-		vk::ImageLayout::eGeneral,
-		vk::ImageLayout::ePresentSrcKHR,
-		queueFamily_,
-		queueFamily_,
-		frameData_[imageIdx].image,
-		imageSubresourceRange
+    vk::ImageMemoryBarrier2 imageBarrier2{
+		vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryWrite,
+		vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryRead,
+		vk::ImageLayout::eGeneral, vk::ImageLayout::ePresentSrcKHR,
+		queueFamily_, queueFamily_, frameData_[imageIdx].image, imageSubresourceRange
 	};
 
-	vk::DependencyInfo dependencyInfo2 = { vk::DependencyFlags(), nullptr, nullptr, imageBarrier2 };
+	vk::DependencyInfo dependencyInfo2{ vk::DependencyFlags(), nullptr, nullptr, imageBarrier2 };
 
     frameData_[frameIdx].cmdBuffer.pipelineBarrier2(dependencyInfo2);
 
-	//	##  CMD END
-	//	######################################################
+	//	---------------------------------------------------
+	//	--	end cmd:
+	//	---------------------------------------------------
 	
 	frameData_[frameIdx].cmdBuffer.end();
 
-	vk::SemaphoreSubmitInfo waitSemaphoreInfo = {
-		frameData_[frameIdx].imageSem, 1,
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
+	vk::SemaphoreSubmitInfo waitSemaphoreInfo{
+		frameData_[frameIdx].imageSem, 1, vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
 	};
 
-	vk::SemaphoreSubmitInfo submitSemaphoreInfo = {
-		frameData_[frameIdx].renderSem, 1,
-		vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
+	vk::SemaphoreSubmitInfo submitSemaphoreInfo{
+		frameData_[frameIdx].renderSem, 1, vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0
 	};
 
-	vk::CommandBufferSubmitInfo commandBufferSubmitInfo = { frameData_[frameIdx].cmdBuffer, 0 };
+	vk::CommandBufferSubmitInfo commandBufferSubmitInfo{ frameData_[frameIdx].cmdBuffer, 0 };
 
-	vk::SubmitInfo2 submitInfo = { vk::SubmitFlagBits(), waitSemaphoreInfo, commandBufferSubmitInfo, submitSemaphoreInfo };
+	vk::SubmitInfo2 submitInfo{ vk::SubmitFlagBits(), waitSemaphoreInfo, commandBufferSubmitInfo, submitSemaphoreInfo };
 
 	queue_.submit2(submitInfo, frameData_[frameIdx].fence);
 
-	vk::PresentInfoKHR presentInfo = { frameData_[frameIdx].renderSem, swapchain_, imageIdx };
+	vk::PresentInfoKHR presentInfo{ frameData_[frameIdx].renderSem, swapchain_, imageIdx };
 
 	vk::Result presentResult = queue_.presentKHR(presentInfo);
-	if (presentResult != vk::Result::eSuccess) {
-		throw std::runtime_error(vk::to_string(presentResult));
-	}
+	if (presentResult != vk::Result::eSuccess) throw std::runtime_error(vk::to_string(presentResult));
 }
 
-//	##	run simulation loop
-//	######################################################
+
 
 void Schro2D::run(std::vector<std::vector<std::complex<float>>>& wavefn,
 		std::vector<std::vector<std::complex<float>>>& potential, float pushConst) {
 	//	prep and load gpu arrays
-	std::vector<float> psi = {};
+	std::vector<float> psi{};
 	for (const auto& row : wavefn) {
 		for (const auto& coord : row) {
 			psi.emplace_back(coord.real());
 			psi.emplace_back(coord.imag());
 		}
 	}
+	vmaCopyMemoryToAllocation(allocator_, psi.data(), psiAlloc_[0], 0, sizeof(float) * psi.size());
+	vmaCopyMemoryToAllocation(allocator_, psi.data(), psiAlloc_[1], 0, sizeof(float) * psi.size());
 
-	std::vector<float> v = {};
+	std::vector<float> v{};
 	for (const auto& row : potential) {
 		for (const auto& coord : row) {
 			v.emplace_back(coord.real());
 			v.emplace_back(coord.imag());
 		}
 	}
-
-	vmaCopyMemoryToAllocation(allocator_, psi.data(), psiAlloc_[0], 0, sizeof(float) * psi.size());
-	vmaCopyMemoryToAllocation(allocator_, psi.data(), psiAlloc_[1], 0, sizeof(float) * psi.size());
 	vmaCopyMemoryToAllocation(allocator_, v.data(), vAlloc_, 0, sizeof(float) * v.size());
 
+	//	render loop
 	uint8_t frameIdx = 0;
 	while (!glfwWindowShouldClose(window_)) {
 		glfwPollEvents();

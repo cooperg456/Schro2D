@@ -17,6 +17,10 @@
 
 
 
+
+
+
+
 //	struct to hold per frame data
 struct FrameData {
 	vk::Fence fence;				//	fence
@@ -28,20 +32,23 @@ struct FrameData {
 	vk::ImageView view;				//	swapchain image view
 };
 
+
+
 //	schrodinger equation solver using vulkan
 class Schro2D {
 public:
-	//	initialize engine components
+	//	initialize vulkan/glfw components
 	Schro2D(uint32_t width, uint32_t height, double scale);
-	//	cleanup vulkan/glfw
+	//	cleanup vulkan/glfw components
 	~Schro2D();
-	//	starts program
+	//	runs schrodinger equation solver
 	void run(std::vector<std::vector<std::complex<float>>>& wavefn,
 		std::vector<std::vector<std::complex<float>>>& potential, float pushConst);
 
 private:
-	//	##  initializers for engine components
-	//	######################################################
+	//	---------------------------------------------------
+	//	--	initializers for engine components:
+	//	---------------------------------------------------
 
 	//	initializes window using glfw 3.4
 	void createWindow();
@@ -60,36 +67,38 @@ private:
 	//	initializes compute pipeline, storage buffers, and descriptor sets
 	void createComputePipeline();
 
-	//	##  simulation loop functions
-	//	######################################################
+	//	---------------------------------------------------
+	//	--	simulation loop:
+	//	---------------------------------------------------
 
-	//	update window
+	//	step schrodinger solver and update window
 	void draw(uint8_t frameIdx, float pushConst);
 
-	//	##	context configuration and components:
-	//	######################################################
+	//	---------------------------------------------------
+	//	--	context configuration vars and components:
+	//	---------------------------------------------------
 
-	//	simulation config
-	const uint32_t viewportWidth_;		//	glfw window width (pixels)
-	const uint32_t viewportHeight_;		//	glfw window height (pixels)
-	const double simScale_;				//	multiplier for sim resolution
+	//	simulation grid config
+	const uint32_t viewportWidth_;						//	glfw window width (pixels)
+	const uint32_t viewportHeight_;						//	glfw window height (pixels)
+	const double simScale_;								//	multiplier for sim resolution
 	
 	//	engine components
-	vk::Instance instance_{};				//	instance
-	vk::PhysicalDevice physicalDevice_{};	//	physical device
-	uint32_t queueFamily_ = UINT32_MAX;		//	queue family
-	vk::Device device_{};					//	device
-	vk::Queue queue_{};						//	queue
-	VmaAllocator allocator_{};				//	allocator
+	vk::Instance instance_{};							//	instance
+	vk::PhysicalDevice physicalDevice_{};				//	physical device
+	uint32_t queueFamily_ = UINT32_MAX;					//	queue family
+	vk::Device device_{};								//	device
+	vk::Queue queue_{};									//	queue
+	VmaAllocator allocator_{};							//	allocator
 
 	//	render components
-	GLFWwindow* window_ {};					//	window
-	VkSurfaceKHR surface_{};				//	surface
-	vk::SwapchainKHR swapchain_{};			//	swapchain
-	std::vector<FrameData> frameData_{};	//	per frame data structures
+	GLFWwindow* window_ {};								//	window
+	VkSurfaceKHR surface_{};							//	surface
+	vk::SwapchainKHR swapchain_{};						//	swapchain
+	std::vector<FrameData> frameData_{};				//	per frame data structures
 
 	//	compute pipeline
-	vk::ShaderModule shaderModule_{};					//	shader module
+	vk::ShaderModule shaderModule_{};					//	schrodinger solver shader module
 	vk::DescriptorSetLayout descriptorSetLayout_{};		//	descriptor set layout
 	vk::PipelineLayout pipelineLayout_{};				//	pipeline layout
 	vk::Pipeline computePipeline_{};					//	compute pipeline
@@ -97,8 +106,8 @@ private:
 	std::vector<vk::DescriptorSet> descriptorSets_{};	//	descriptor sets
 
 	//	compute storage
-	std::vector<vk::Buffer> psiBuffer_{};	//	buffers containing wave function values
-	std::vector<VmaAllocation> psiAlloc_{};	//	memory allocation for psi buffer
-	vk::Buffer vBuffer_{};					//	buffers containing potential values
-	VmaAllocation vAlloc_{};				//	memory allocation for v buffer
+	std::vector<vk::Buffer> psiBuffer_{};				//	buffers containing wave function values
+	std::vector<VmaAllocation> psiAlloc_{};				//	memory allocation for wave function buffer
+	vk::Buffer vBuffer_{};								//	buffer containing potential values
+	VmaAllocation vAlloc_{};							//	memory allocation for potential buffer
 };
