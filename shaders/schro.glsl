@@ -2,103 +2,127 @@
 
 
 
-layout (local_size_x = 32, local_size_y = 32) in;
+//	---------------------------------------------------
+//	--	resource bindings:
+//	---------------------------------------------------
 
-layout (binding = 0) uniform writeonly image2D displayImage;
+//	framebuffer
+layout (binding = 0) uniform writeonly image2D framebuffer;
 
+
+//	current wave function values
 layout (std430, binding = 1) readonly buffer psiReadBuffer { 
-	float psi[]; 
+	vec2 psi[]; 
 };
 
+//	updated wave function values
 layout (std430, binding = 2) buffer psiWriteBuffer { 
-	float psi2[]; 
+	vec2 psi2[]; 
 };
 
+//	potential values
 layout (std430, binding = 3) readonly buffer potentialBuffer { 
-	float V[]; 
+	vec2 potential[]; 
 };
 
+//	half step wave function values
+layout (std430, binding = 4) buffer psiHalfBuffer { 
+	vec2 psiHalf[]; 
+};
+
+//	time stepsize
 layout (push_constant) uniform consts {
 	float dt; 
+	uint stage; 
 };
 
 
 
-vec2 getV(ivec2 VCoord, ivec2 VSize) {
-	if (VCoord.x >= VSize.x || VCoord.y >= VSize.y || VCoord.x < 0 || VCoord.y < 0) {
-		return vec2(1 / 0, 0);
-	}
-	float real = V[2 * (VCoord.x + VSize.x * VCoord.y)];
-	float imag = V[2 * (VCoord.x + VSize.x * VCoord.y) + 1];
-	return vec2(real, imag);
+//	---------------------------------------------------
+//	--	helper functions:
+//	---------------------------------------------------
+
+//	complex multiplication
+vec2 cMult(vec2 a, vec2 b) {
+	float re = a.x * b.x - a.y * b.y;
+    float im = a.x * b.y + a.y * b.x;
+    return vec2(re, im);
 }
 
-vec2 getPsi(ivec2 psiCoord, ivec2 psiSize) {
-	if (psiCoord.x >= psiSize.x || psiCoord.y >= psiSize.y || psiCoord.x < 0 || psiCoord.y < 0) {
-		return vec2(0, 0);
-	}
-	float real = psi[2 * (psiCoord.x + psiSize.x * psiCoord.y)];
-	float imag = psi[2 * (psiCoord.x + psiSize.x * psiCoord.y) + 1];
-	return vec2(real, imag);
+//	complex conjugate
+vec2 conj(vec2 z) {
+	return vec2(z.x, -z.y);
 }
 
-vec2 getPsi2(ivec2 psiCoord, ivec2 psiSize) {
-	if (psiCoord.x >= psiSize.x || psiCoord.y >= psiSize.y || psiCoord.x < 0 || psiCoord.y < 0) {
-		return vec2(0, 0);
-	}
-	float real = psi2[2 * (psiCoord.x + psiSize.x * psiCoord.y)];
-	float imag = psi2[2 * (psiCoord.x + psiSize.x * psiCoord.y) + 1];
-	return vec2(real, imag);
+//	color map from values
+vec4 colorMap(vec2 psiValue, vec2 potentialValue) {
+	//	return vec4(cMult(psiValue, conj(psiValue)).x, 0, potentialValue.x, 1);
+	return (psiValue.x >= 0) ? vec4(psiValue.x, 0, 0, 1) : vec4(0, 0, -psiValue.x, 1);
 }
 
-void setPsi2(ivec2 psiCoord, ivec2 psiSize, vec2 value) {
-	psi2[2 * (psiCoord.x + psiSize.x * psiCoord.y)] = value.x;
-	psi2[2 * (psiCoord.x + psiSize.x * psiCoord.y) + 1] = value.y;
+//	schrodinger step stage 1
+vec2 dPsiDt(uint idx, ivec2 shape) {
+	//	physical constants
+	vec2 i = vec2(0, 1);
+	float hBar = 6.582119569e-16;			//	eV * s
+	float electronMass = 5.685630111e-30;	//	eV / (nm/s)^2
+
+	vec2 laplacian = (
+		psi[idx-shape.x-1] + 4 * psi[idx-shape.x] + psi[idx-shape.x+1]
+		+ 4 * psi[idx-1] - 20 * psi[idx] + 4 * psi[idx+1]
+		+ psi[idx+shape.x-1] + 4 * psi[idx+shape.x] + psi[idx+shape.x+1]
+	) / 6 * 1e18;
+
+	return cMult(-i / hBar, (- hBar * hBar / (2 * electronMass)) * laplacian + cMult(psi[idx], potential[idx]));
 }
 
-vec4 colorMap(ivec2 cmapCoord, ivec2 cmapSize) {
-	vec2 psiValue = getPsi(cmapCoord, cmapSize);
-	//float prob = complexProduct(psiValue, complexConjugate(psiValue))
-	if (psiValue.x >= 0) {
-		return vec4(psiValue.x, 0, 0, 1);
-	}
-	if (psiValue.x < 0) {
-		return vec4(0, 0, -psiValue.x, 1);
-	}
-}
+//	schrodinger step stage 2
+vec2 dPsiDt2(uint idx, ivec2 shape) {
+	//	physical constants
+	vec2 i = vec2(0, 1);
+	float hBar = 6.582119569e-16;			//	eV * s
+	float electronMass = 5.685630111e-30;	//	eV / (nm/s)^2
 
-vec2 complexConjugate(vec2 a) {
-	return vec2(a.x, -a.y);
-}
+	vec2 laplacian = (
+		psiHalf[idx-shape.x-1] + 4 * psiHalf[idx-shape.x] + psiHalf[idx-shape.x+1]
+		+ 4 * psiHalf[idx-1] - 20 * psiHalf[idx] + 4 * psiHalf[idx+1]
+		+ psiHalf[idx+shape.x-1] + 4 * psiHalf[idx+shape.x] + psiHalf[idx+shape.x+1]
+	) / 6 * 1e18;
 
-vec2 complexProduct(vec2 a, vec2 b) {
-	return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+	return cMult(-i / hBar, (- hBar * hBar / (2 * electronMass)) * laplacian + cMult(psiHalf[idx], potential[idx]));
 }
 
 
+			
+//	---------------------------------------------------
+//	--	entry point:
+//	---------------------------------------------------
+
+layout (local_size_x = 32, local_size_y = 32) in;
 
 void main() {
 	ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = imageSize(displayImage);
+	ivec2 shape = imageSize(framebuffer);
 
-	if (coord.x < size.x && coord.y < size.y) {
-		vec2 i = vec2(0, 1);
-		float hBar = 6.582119569e-16;			//	eV * s
-		float electronMass = 5.685630111e-30;	//	eV / (nm/s)^2
+	//	if thread out of bounds, return 
+	if (coord.x >= shape.x || coord.y >= shape.y) {
+		return;
+	}
+	
+	//	convert to flattened indexing
+	uint idx = coord.x + shape.x * coord.y;
 
-		vec2 laplacian =
-			getPsi(coord + ivec2(1, 0), size)
-			+ getPsi(coord + ivec2(-1, 0), size)
-			+ getPsi(coord + ivec2(0, 1), size)
-			+ getPsi(coord + ivec2(0, -1), size)
-			- 4.0 * getPsi(coord, size);
-
-		vec2 dPsi_dt =
-			complexProduct(i * (hBar*hBar / (2*electronMass)), laplacian)
-			- complexProduct(i / hBar * getPsi(coord, size), getV(coord, size));
-
-		setPsi2(coord, size, dPsi_dt * dt);		//	Euler method
-
-		imageStore(displayImage, coord, colorMap(coord, size));
+	//	boundary conditions
+	if (coord.x == 0 || coord.y == 0 || coord.x == shape.x - 1 || coord.y == shape.y - 1) {
+		psi2[idx] = vec2(0.0, 0.0);
+		psiHalf[idx] = vec2(0.0, 0.0);
+	}
+	//	half step solver
+	else if (stage == 0) {
+		psiHalf[idx] = psi[idx] + dPsiDt(idx, shape) * dt;
+	}
+	else if (stage == 1) {
+		psi2[idx] = psi[idx] + (dPsiDt(idx, shape) + dPsiDt2(idx, shape)) * dt / 2;
+		imageStore(framebuffer, coord, colorMap(psi2[idx], potential[idx]));
 	}
 }

@@ -29,25 +29,31 @@ std::complex<float> calc_psi(uint x, uint y, uint x0, uint y0, float E0, float a
 }
 
 int main() {
-	Schro2D schro(800, 800, 2);
+	Schro2D schro(500, 500, 2);
 
-	std::vector<std::vector<std::complex<float>>> psi(1600, std::vector<std::complex<float>>(1600, std::complex<float>(0, 0)));
-	std::vector<std::vector<std::complex<float>>> v(1600, std::vector<std::complex<float>>(1600, std::complex<float>(0, 0)));
+	std::vector<std::vector<std::complex<float>>> psi(1000, std::vector<std::complex<float>>(1000, std::complex<float>(0, 0)));
+	std::vector<std::vector<std::complex<float>>> v(1000, std::vector<std::complex<float>>(1000, std::complex<float>(0, 0)));
 
-	uint x0 = 800;		//	nm
-	uint y0 = 800;		//	nm
-	float E0 = 10e-4;	//	eV
+	uint x0 = 200;		//	nm
+	uint y0 = 500;		//	nm
+	float E0 = 1e-1;	//	eV
 	float alpha = 0;	//	rad
 	float sigma = 50;	//	nm
 
-	for (size_t i = 0; i < 1600; i++) {
-		for (size_t j = 0; j < 1600; j++) {
-			v[i][j] = std::complex<float>(0.0, 0.0);
-			psi[i][j] = calc_psi(i, j, x0, y0, E0 - v[i][j].real(), alpha, sigma);
+	for (size_t i = 0; i < 1000; i++) {
+		for (size_t j = 0; j < 1000; j++) {
+			if (i >= 400 && i <= 600) {
+				v[j][i] = std::complex<float>(1.0, 0.0);
+			}
+			else {
+				v[j][i] = std::complex<float>(0.0, 0.0);
+			}
+			auto psiValue = calc_psi(i, j, x0, y0, E0 - v[j][i].real(), alpha, sigma);
+			psi[j][i] = (std::abs(psiValue) > 0) ? psiValue : 0;
 		}
 	}
 
-	float dt = 1e-16;	//	0.1 fs / frame
+	float dt = 1e-33;
 	schro.run(psi, v, dt);
 
 	return 0;
