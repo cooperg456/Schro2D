@@ -25,15 +25,15 @@ set_target_properties(Schro2D PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURC
 
 
 ##	---------------------------------------------------
-##	--	Build GLSL shaders to SPIR-V
+##	--	Build HLSL shaders to SPIR-V
 ##	---------------------------------------------------
-file(GLOB GLSL_FILES "${CMAKE_SOURCE_DIR}/shaders/*.glsl")
+file(GLOB HLSL_FILES "${CMAKE_SOURCE_DIR}/shaders/*.hlsl")
 
 set(SPV_FILES "")
 
-foreach(GLSL_FILE ${GLSL_FILES}) 
-	get_filename_component(GLSL_FILENAME ${GLSL_FILE} NAME_WLE) 
-	set(OUTPUT_FILE "${CMAKE_SOURCE_DIR}/bin/${GLSL_FILENAME}.spv")
+foreach(HLSL_FILE ${HLSL_FILES}) 
+	get_filename_component(HLSL_FILENAME ${HLSL_FILE} NAME_WLE) 
+	set(OUTPUT_FILE "${CMAKE_SOURCE_DIR}/bin/${HLSL_FILENAME}.spv")
 	add_custom_command( 
 		OUTPUT ${OUTPUT_FILE}
 		COMMAND glslangValidator 
@@ -41,8 +41,8 @@ foreach(GLSL_FILE ${GLSL_FILES})
 				$<$<CONFIG:Debug>:-g> 
 				$<$<CONFIG:Debug>:-H>
 				-o ${OUTPUT_FILE} 
-				-V ${GLSL_FILE}
-		DEPENDS ${GLSL_FILE}
+				-V -D ${HLSL_FILE}
+		DEPENDS ${HLSL_FILE}
 		COMMENT "Building shader ${OUTPUT_FILE}"
 	) 
 	list(APPEND SPV_FILES ${OUTPUT_FILE})
