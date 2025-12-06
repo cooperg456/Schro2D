@@ -28,7 +28,7 @@ std::complex<float> calc_psi(uint x, uint y, uint x0, uint y0, float E0, float a
 	return wave * envelope;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
 	Schro2D schro(500, 500, 2);
 
 	std::vector<std::vector<std::complex<float>>> psi(1000, std::vector<std::complex<float>>(1000, std::complex<float>(0, 0)));
@@ -36,19 +36,43 @@ int main() {
 
 	uint x0 = 200;		//	nm
 	uint y0 = 500;		//	nm
-	float E0 = 1e-1;	//	eV
+	float E0 = 1e-2;	//	eV
 	float alpha = 0;	//	rad
 	float sigma = 50;	//	nm
 
+	//	free particle
+	if (*argv[1] == '0') {
+		std::cout << "Schro2D: 'Wave Packet in Infinite Square Well'\n";
+	}
+
+	//	barrier
+	if (*argv[1] == '1') {
+		std::cout << "Schro2D: 'Wave Packet with Barrier'\n";
+		for (size_t i = 0; i < 1000; i++) {
+			for (size_t j = 0; j < 1000; j++) {
+				if (i >= 475 && i <= 525) v[j][i] = std::complex<float>(1e16, 0.0);
+			}
+		}
+	}
+
+	//	slit
+	if (*argv[1] == '2') {
+		std::cout << "Schro2D: 'Wave Packet with Double Slit'\n";
+		for (size_t i = 0; i < 1000; i++) {
+			for (size_t j = 0; j < 1000; j++) {
+				if (i >= 475 && i <= 525) {
+					if (!((j >= 450 && j <= 475) || (j >= 525 && j <= 550))) {
+						v[j][i] = std::complex<float>(1e16, 0.0);  // close enough to infinite
+					}
+				}
+			}
+		}
+	}
+
+	//	create wave packet
 	for (size_t i = 0; i < 1000; i++) {
 		for (size_t j = 0; j < 1000; j++) {
-			if (i >= 400 && i <= 600) {
-				v[j][i] = std::complex<float>(1.0, 0.0);
-			}
-			else {
-				v[j][i] = std::complex<float>(0.0, 0.0);
-			}
-			auto psiValue = calc_psi(i, j, x0, y0, E0 - v[j][i].real(), alpha, sigma);
+			auto psiValue = calc_psi(i, j, x0, y0, E0, alpha, sigma);
 			psi[j][i] = (std::abs(psiValue) > 0) ? psiValue : 0;
 		}
 	}

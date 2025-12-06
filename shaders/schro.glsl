@@ -57,7 +57,8 @@ vec2 conj(vec2 z) {
 //	color map from values
 vec4 colorMap(vec2 psiValue, vec2 potentialValue) {
 	//	return vec4(cMult(psiValue, conj(psiValue)).x, 0, potentialValue.x, 1);
-	return (psiValue.x >= 0) ? vec4(psiValue.x, 0, 0, 1) : vec4(0, 0, -psiValue.x, 1);
+	vec4 well = (potentialValue.x > 0) ? vec4(0.05, 0.05, 0.05, 1) : vec4(0, 0, 0, 0);
+	return ((psiValue.x >= 0) ? vec4(psiValue.x, 0, 0, 1) : vec4(0, 0, -psiValue.x, 1)) + well;
 }
 
 //	schrodinger step stage 1
