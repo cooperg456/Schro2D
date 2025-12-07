@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 		std::cout << "Schro2D: 'Wave Packet with Barrier'\n";
 		for (size_t i = 0; i < 1000; i++) {
 			for (size_t j = 0; j < 1000; j++) {
-				if (i >= 475 && i <= 525) v[j][i] = std::complex<float>(1e16, 0.0);
+				if (i >= 475 && i <= 525) v[j][i] = std::complex<float>(1e-2, 0.0);
 			}
 		}
 	}
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 			for (size_t j = 0; j < 1000; j++) {
 				if (i >= 475 && i <= 525) {
 					if (!((j >= 450 && j <= 475) || (j >= 525 && j <= 550))) {
-						v[j][i] = std::complex<float>(1e16, 0.0);  // close enough to infinite
+						v[j][i] = std::complex<float>(1e-2, 0.0);  
 					}
 				}
 			}
@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	float dt = 1e-33;
+	float dt = 1e-15;
 	schro.run(psi, v, dt);
 
 	return 0;

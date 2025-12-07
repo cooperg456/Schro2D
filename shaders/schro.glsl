@@ -72,7 +72,7 @@ vec2 dPsiDt(uint idx, ivec2 shape) {
 		psi[idx-shape.x-1] + 4 * psi[idx-shape.x] + psi[idx-shape.x+1]
 		+ 4 * psi[idx-1] - 20 * psi[idx] + 4 * psi[idx+1]
 		+ psi[idx+shape.x-1] + 4 * psi[idx+shape.x] + psi[idx+shape.x+1]
-	) / 6 * 1e18;
+	) / 6;
 
 	return cMult(-i / hBar, (- hBar * hBar / (2 * electronMass)) * laplacian + cMult(psi[idx], potential[idx]));
 }
@@ -88,7 +88,7 @@ vec2 dPsiDt2(uint idx, ivec2 shape) {
 		psiHalf[idx-shape.x-1] + 4 * psiHalf[idx-shape.x] + psiHalf[idx-shape.x+1]
 		+ 4 * psiHalf[idx-1] - 20 * psiHalf[idx] + 4 * psiHalf[idx+1]
 		+ psiHalf[idx+shape.x-1] + 4 * psiHalf[idx+shape.x] + psiHalf[idx+shape.x+1]
-	) / 6 * 1e18;
+	) / 6;
 
 	return cMult(-i / hBar, (- hBar * hBar / (2 * electronMass)) * laplacian + cMult(psiHalf[idx], potential[idx]));
 }
