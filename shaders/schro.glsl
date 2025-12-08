@@ -58,7 +58,7 @@ vec2 conj(vec2 z) {
 vec4 colorMap(vec2 psiValue, vec2 potentialValue) {
 	//	return vec4(cMult(psiValue, conj(psiValue)).x, 0, potentialValue.x, 1);
 	vec4 well = (potentialValue.x > 0) ? vec4(0.05, 0.05, 0.05, 1) : vec4(0, 0, 0, 0);
-	return ((psiValue.x >= 0) ? vec4(psiValue.x, 0, 0, 1) : vec4(0, 0, -psiValue.x, 1)) + well;
+	return ((psiValue.x >= 0) ? vec4(psiValue.x / 10, 0, 0, 1) : vec4(0, 0, -psiValue.x / 10, 1)) + well;
 }
 
 //	schrodinger step stage 1
@@ -124,6 +124,8 @@ void main() {
 	}
 	else if (stage == 1) {
 		psi2[idx] = psi[idx] + (dPsiDt(idx, shape) + dPsiDt2(idx, shape)) * dt / 2;
+	}
+	else if (stage == 2) {
 		imageStore(framebuffer, coord, colorMap(psi2[idx], potential[idx]));
 	}
 }

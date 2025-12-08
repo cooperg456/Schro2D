@@ -70,10 +70,20 @@ int main(int argc, char* argv[]) {
 	}
 
 	//	create wave packet
+	float psiNorm = 0;
 	for (size_t i = 0; i < 1000; i++) {
 		for (size_t j = 0; j < 1000; j++) {
 			auto psiValue = calc_psi(i, j, x0, y0, E0, alpha, sigma);
 			psi[j][i] = (std::abs(psiValue) > 0) ? psiValue : 0;
+			psiNorm += std::norm(psi[j][i]) / (float)(1000 * 1000);
+		}
+	}
+	
+	//	normalize wavepacket
+	psiNorm = std::sqrt(psiNorm);
+	for (size_t i = 0; i < 1000; i++) {
+		for (size_t j = 0; j < 1000; j++) {
+			psi[j][i] /= psiNorm;
 		}
 	}
 

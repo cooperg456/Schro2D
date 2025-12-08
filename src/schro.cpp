@@ -464,15 +464,11 @@ void Schro2D::draw(uint8_t frameIdx, float pushConst) {
 	frameData_[frameIdx].cmdBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline_);
 	frameData_[frameIdx].cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipelineLayout_, 0, descriptorSets_[imageIdx], nullptr);
 
-	frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(float), &pushConst);
-	uint32_t stage0 = 0;
-	frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, sizeof(float), sizeof(uint32_t), &stage0);
-	frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
-
-	frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(float), &pushConst);
-	uint32_t stage1 = 1;
-	frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, sizeof(float), sizeof(uint32_t), &stage1);
-	frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
+	for (uint32_t stage = 0; stage < 3; stage++) {
+		frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, 0, sizeof(float), &pushConst);
+		frameData_[frameIdx].cmdBuffer.pushConstants(pipelineLayout_, vk::ShaderStageFlagBits::eCompute, sizeof(float), sizeof(uint32_t), &stage);
+		frameData_[frameIdx].cmdBuffer.dispatch((simScale_ * viewportWidth_ + 31) / 32, (simScale_ * viewportHeight_ + 31) / 32, 1);
+	}
 
     vk::ImageMemoryBarrier2 imageBarrier2{
 		vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryWrite,
@@ -527,9 +523,25 @@ void Schro2D::run(std::vector<std::vector<std::complex<float>>>& wavefn,
 
 	//	render loop
 	uint8_t frameIdx = 0;
+	int frames = 0;
 	while (!glfwWindowShouldClose(window_)) {
 		glfwPollEvents();
 		draw(frameIdx, pushConst);
 		frameIdx ^= 1;
+
+		if (frames % 100 == 0) {
+			std::vector<std::complex<float>> psiHost(wavefn.size() * wavefn[0].size());
+			vmaCopyAllocationToMemory(allocator_, psiAlloc_[0], 0, psiHost.data(), sizeof(std::complex<float>) * psiHost.size());
+
+			// Calculate normalization
+			float norm = 0;
+			for (const auto& val : psiHost) {
+				norm += std::norm(val) / (viewportWidth_ * viewportHeight_ * simScale_ * simScale_);
+			}
+
+			std::cout << frames << ",\t" << norm << "\n";
+		}
+
+		frames++;
 	}
 }
